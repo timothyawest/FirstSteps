@@ -1,6 +1,6 @@
 package com.example.timothy.shootthemdown;
 
-import android.content.Context;
+import android.app.Activity;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -12,13 +12,17 @@ import android.media.AudioManager;
 import android.media.SoundPool;
 import android.os.Build;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 
 import android.view.MotionEvent;
+import android.widget.Toast;
 
 
+import com.example.shoebox.Item;
+import com.example.shoebox.ShoeBox;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -31,18 +35,16 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
     private GameThread gameThread = null;
     private SpriteList spriteList;
     private SoundPool soundPool;
-    private final int numLives =5;
-    public int lastMissile = 0;
-    private boolean didOnce;
+    public int lastMissileTime;
     private boolean soundPoolLoaded = false;
     private float[] stars;
     private Bitmap background;
+    private String directory;
     private HashMap<String, Integer> soundHash = new HashMap<>();
     private Random rnd;
     private LetterBox letterBoxPressed = null;
-    public boolean gameOver = false;
+    public boolean gameOver = true;
     private boolean gameWon = false;
-    private int howOftenNewMissiles=3000;
     private GameOverMessage gameOverMessage;
     private ScoreBackground scoreBackground;
     private MainActivity mainActivity;
@@ -51,10 +53,10 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         this.getHolder().addCallback(this);
         this.setFocusable(true);
         mainActivity = context;
-        initVariables();
-        initObjects();
+        directory = mainActivity.getDirectory();
         initSoundPool();
 
+        lastMissileTime = 0;
     }
 
     public void pauseGameThread(boolean pause) {
@@ -65,15 +67,14 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
     private void initVariables() {
         shoeBox = null;
         spriteList = null;
-        lastMissile = 0;
-        didOnce = false;
+        lastMissileTime = 0;
         stars = new float[100];
         background = null;
-        scoreBackground = new ScoreBackground(this);
-
     }
 
     private void initObjects() {
+        scoreBackground = new ScoreBackground(this);
+        rnd = new Random(System.currentTimeMillis());
         this.shoeBox = new ShoeBox();
         Log.i("difficulty",String.valueOf(mainActivity.getDifficulty()));
         if(mainActivity.getDifficulty()<3){
@@ -85,7 +86,8 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         }
         AssetManager assetManager = getContext().getAssets();
         try {
-            String[] files = assetManager.list("3letterB");
+            Log.i("initObjects", directory);
+            String[] files = assetManager.list(directory);
             if(files==null)
                 throw new NullPointerException();
             for (String file:files) {
@@ -98,10 +100,19 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
             Log.e("Error:" ,e.toString());
             System.exit(1);
         }
-            this.spriteList = new SpriteList();
+        this.spriteList = new SpriteList();
         // Make Game Surface focusable so it can handle events.
         // Sét callback.
-        rnd = new Random(System.currentTimeMillis());
+        for (int i = 0; i < 100; i += 2) {
+            float x = (float) rnd.nextInt(getWidth());
+            float y = (float) rnd.nextInt(getHeight());
+            stars[i] = x;
+            stars[i + 1] = y;
+        }
+        background = BitmapFactory.decodeResource(this.getResources(), R.drawable.background);
+        float ratio = ((float) background.getHeight() / (float) background.getWidth());
+        int myheight = (int) (ratio * (float) getWidth());
+        background = Bitmap.createScaledBitmap(background, getWidth(), myheight, false);
 
 
     }
@@ -142,7 +153,8 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         AssetManager assetManager = getContext().getAssets();
         String[] files;
         try {
-            files = assetManager.list("3letterB");
+            Log.i("LoadHash", directory);
+            files = assetManager.list(directory);
             if(files==null)
                 throw new NullPointerException();
             for (String file:files) {
@@ -150,7 +162,7 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
                     String text=file.substring(0, file.indexOf('.'));
                     if (!soundHash.containsKey(text)) {
                         try {
-                            int id = this.soundPool.load(assetManager.openFd("3letterB/" +file),1);
+                            int id = this.soundPool.load(assetManager.openFd(directory + "/" + file), 1);
                             soundHash.put(text, id);
                         } catch (Exception e) {
                             Log.e("PlaySound", e.toString());
@@ -222,16 +234,19 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
 
     }
 
+    int messageTimes = 0;
     public void update() {
-
+        if (shoeBox == null)
+            initializeGame();
 
         int x = rnd.nextInt(this.getWidth() - 100);
         int now = (int) (System.nanoTime() / 1000000);
         HashSet<Item> boxHash = new HashSet<>();
         HashSet<Item> missileHash = new HashSet<>();
-        spriteList.UpdateGameObjects();
         if (gameOver)
             return;
+
+        spriteList.UpdateGameObjects();
 
         for (GameObject gameObject : spriteList.getGameObjects()) {
             if (gameObject.getClass().getSimpleName().equals(Missile.class.getSimpleName())) {
@@ -244,26 +259,26 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         if (gameWon)
             return;
 
-        int widthCanvas = this.getWidth();
-
         if (spriteList.getLetterBoxes().size() == 0) {
             for (Item item : shoeBox.getActiveList()) {
-                LetterBox myletter = new LetterBox(spriteList, item, widthCanvas / shoeBox.getNumInActiveList(), 0, 0);
+                LetterBox myletter = new LetterBox(spriteList, item, getWidth() / shoeBox.getNumInActiveList(), 0, 0);
                 spriteList.getLetterBoxes().add(myletter);
 
             }
+            int numLives = 5;
             for (int i = 0; i < numLives; i++) {
                 LittleTanks chibi = new LittleTanks(this, i * this.getWidth() / 5, this.getHeight()-spriteList.getLetterBoxes().get(0).getHeight());
                 spriteList.getGameObjectsToAdd().add(chibi);
             }
         }
 
-        if (now - lastMissile > howOftenNewMissiles || !didOnce) {
+        int howOftenNewMissiles = 3000;
+        if (now - lastMissileTime > howOftenNewMissiles) {
             if (missileHash.size() < shoeBox.getNumInActiveList()) { // if we have a new letter but havent cleared old yet
                 Item item = shoeBox.getChoice();
                 Missile missile = new Missile(item, spriteList, this, x, 0);
                 spriteList.getGameObjectsToAdd().add(missile);
-                this.lastMissile = now;
+                this.lastMissileTime = now;
             }
         }
 
@@ -285,7 +300,7 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
                 while (listICanAdd.hasNext()) {
                     Item item = listICanAdd.next();
                     if (!boxHash.contains(item)) {
-                        spriteList.getLetterBoxes().set(spriteList.getLetterBoxes().indexOf(letterBox), new LetterBox(spriteList, item, widthCanvas / shoeBox.getNumInActiveList(), 0, 0));
+                        spriteList.getLetterBoxes().set(spriteList.getLetterBoxes().indexOf(letterBox), new LetterBox(spriteList, item, getWidth() / shoeBox.getNumInActiveList(), 0, 0));
                         break;
                     }
                 }
@@ -305,21 +320,6 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
 
     public void draw(Canvas canvas) {
         super.draw(canvas);
-        scoreBackground.draw(canvas);
-        if (!didOnce) {
-            this.gameOverMessage = new GameOverMessage(this);
-            for (int i = 0; i < 100; i += 2) {
-                float x = (float) rnd.nextInt(getWidth());
-                float y = (float) rnd.nextInt(getHeight());
-                stars[i] = x;
-                stars[i + 1] = y;
-            }
-            background = BitmapFactory.decodeResource(this.getResources(), R.drawable.background);
-            float ratio = ((float) background.getHeight() / (float) background.getWidth());
-            int height = (int) (ratio * (float) getWidth());
-            background = Bitmap.createScaledBitmap(background, getWidth(), height, false);
-            didOnce = true;
-        }
         int start;
         int end;
         start = rnd.nextInt(49);
@@ -335,6 +335,7 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         canvas.drawPoints(stars3, paint);
 
         Log.i("chibi", String.valueOf(4));
+        scoreBackground.draw(canvas);
 
         canvas.drawBitmap(background, 0, getHeight() - 100 - background.getHeight(), null);
 
@@ -345,6 +346,8 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
             Log.i("draw", "objects");
         }
         if (gameOver) {
+            if (gameOverMessage == null)
+                this.gameOverMessage = new GameOverMessage(this);
             gameOverMessage.draw(canvas);
         }
         if (this.gameWon)
@@ -356,11 +359,8 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
             //   }
         }
     }
-    @Override
-    public boolean performClick(){
-        return super.performClick();
-    }
 
+    int missileMessageTimes = 0;
     @Override
     public boolean onTouchEvent(MotionEvent event) {
 
@@ -369,18 +369,22 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
             int y = (int) event.getY();
             GameObject myObject = spriteList.pressed(x, y);
             if (gameOver)
+
                 myObject = gameOverMessage.pressed(x, y);
             if (myObject != null) {
                 if(myObject.getClass().getSimpleName().equals(GameOverMessage.class.getSimpleName())) {
-                    this.TheEnd();
+                    this.gameOver = false;
+                    this.initializeGame();
                 }else if(myObject.getClass().getSimpleName().equals(Missile.class.getSimpleName())) {
+
                         Missile missile = (Missile) myObject;
+                    Log.i("OnTouchEvent", missile.getShoeBoxItem().getText());
                         playSound(missile.getShoeBoxItem().getText(), 1f);
                 }else if(myObject.getClass().getSimpleName().equals(LetterBox.class.getSimpleName())) {
                         this.letterBoxPressed = (LetterBox) myObject;
 
                 }else if(myObject.getClass().getSimpleName().equals(GameWonMessage.class.getSimpleName())) {
-                        System.exit(0);
+                    mainActivity.finish();
                 }
             }
 
@@ -389,14 +393,13 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
         return false;
     }
 
-    private void TheEnd() {
-        gameThread.setRunning(false);
+    private void initializeGame() {
+        //gameThread.setRunning(false);
         initVariables();
         initObjects();
         Log.i("gameover", "true");
-        this.gameOver = false;
-
-        gameThread.setRunning(true);
+        //    this.gameOver = false;
+        //gameThread.setRunning(true);
     }
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
@@ -410,8 +413,6 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
             this.gameThread.setRunning(true);
             this.gameThread.start();
         }
-        Log.i("shoeBox", "create Surface");
-        //this.gameThread = new GameThread(this,holder);
 
     }
 
@@ -419,6 +420,7 @@ class GameSurface extends SurfaceView implements SurfaceHolder.Callback {
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.i("shoeBox", "surface Changed");
+
 
     }
 

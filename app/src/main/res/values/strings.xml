@@ -1,9 +1,5 @@
 <resources>
-    <string name="app_name">AlphabetQuiz</string>
-    <string-array name="types">
-        <item>Mobile</item>
-        <item>Office</item>
-        <item>Home</item>
-    </string-array>
-    <string name="title_activity_iwant_to_learn">IWantToLearn</string>
+    <string name="app_name">First Steps</string>
+
+    <string name="title_activity_iwant_to_learn">First Steps</string>
 </resources>

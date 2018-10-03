@@ -13,6 +13,7 @@ public class YouWon extends AppCompatActivity {
     }
 
     public void exitApp(View view) {
-        System.exit(0);
+        finish();
     }
+
 }

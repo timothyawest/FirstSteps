@@ -1,21 +1,17 @@
-package com.example.timothy.alphabetquiz;
-import android.content.Context;
-import android.graphics.drawable.Drawable;
+package com.example.shoebox;
 import android.net.Uri;
-import android.support.v7.widget.AppCompatButton;
-import android.widget.Button;
 
 import java.io.Serializable;
-import java.net.URI;
-import java.util.Vector;
 
 public class Item implements Serializable {
-    int right;
+    private int right;
     int id;
     String text=null;
     String audioFile=null;
     String background =null;
-    Item() {
+
+    public Item(String text) {
+        this.text =text;
     }
     public void setCorrect(int correct){
         this.right = correct;
@@ -29,6 +25,10 @@ public class Item implements Serializable {
     public void setAudioFile(Uri audioFile){
         this.audioFile = audioFile.toString();
     }
+
+    public void setAudioFile(String audioFile) {
+        this.audioFile = audioFile;
+    }
     public String getText(){
         return text;
     }
@@ -37,6 +37,10 @@ public class Item implements Serializable {
     }
     public Uri getAudioFile(){
         return (Uri.parse(this.audioFile));
+    }
+
+    public String getAudioFileString() {
+        return this.audioFile;
     }
    public int getCorrect(){
         return right;

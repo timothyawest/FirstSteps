@@ -3,98 +3,106 @@ package com.example.timothy.alphabetquiz;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.AssetFileDescriptor;
-import android.graphics.Point;
-import android.graphics.drawable.Drawable;
-import android.media.Image;
+import android.content.res.AssetManager;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.SoundPool;
 import android.net.Uri;
-import android.os.Handler;
-import android.os.SystemClock;
-import android.support.constraint.ConstraintLayout;
-import android.support.constraint.solver.widgets.WidgetContainer;
-import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AppCompatActivity;
+import android.os.Build;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.constraint.ConstraintLayout;
+import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.util.Pair;
-import android.view.ContextMenu;
-import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
 import android.widget.Button;
-import android.widget.GridLayout;
-import android.widget.Button;
-import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.LinearLayout.LayoutParams;
-import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.shoebox.Item;
+import com.example.shoebox.ShoeBox;
 import com.nex3z.flowlayout.FlowLayout;
 
-import java.io.InputStream;
-import java.net.URI;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Random;
-import java.util.Timer;
-import java.util.UUID;
-import java.util.Vector;
 
-import static java.lang.Thread.sleep;
-
+import static java.security.AccessController.getContext;
 
 public class MainActivity extends AppCompatActivity {
     MediaPlayer mp;
-    com.example.timothy.alphabetquiz.ShoeBox shoeBox = new com.example.timothy.alphabetquiz.ShoeBox();
+    ShoeBox shoeBox = new ShoeBox();
+    private SoundPool soundPool;
+    private boolean soundPoolLoaded = false;
+    private int difficulty = 2;
+    private HashMap<String, Integer> soundHash = new HashMap<>();
+    private long last_time = 0;
+    private String directory = "alphabet";
+    private FlowLayout buttonLayout;
 
-  
-    protected void playSound(final Uri file) {
-        if (mp == null) {
-            mp = MediaPlayer.create(this, file);
-            mp.start();
+    private void initSoundPool() {
 
-        } else if (!mp.isPlaying()) {
-            try {
-                mp.reset();
-                mp.setDataSource(this, file);
-                mp.prepare();
-                mp.start();
+        // With Android API >= 21.
+        if (Build.VERSION.SDK_INT >= 21) {
 
-            } catch (Exception e) {
+            AudioAttributes audioAttrib = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+
+            SoundPool.Builder builder = new SoundPool.Builder();
+            builder.setAudioAttributes(audioAttrib).setMaxStreams(100);
+
+            this.soundPool = builder.build();
+        }
+        // With Android API < 21
+        else {
+            // SoundPool(int maxStreams, int streamType, int srcQuality)
+            this.soundPool = new SoundPool(100, AudioManager.STREAM_MUSIC, 0);
+        }
+
+        // When SoundPool load complete.
+        this.soundPool.setOnLoadCompleteListener(new SoundPool.OnLoadCompleteListener() {
+            @Override
+            public void onLoadComplete(SoundPool soundPool, int sampleId, int status) {
+                soundPoolLoaded = true;
+                // playSound(shoeBox.getCurrentItem().getAudioFileString(), 1f, 1f);
+                // Playing background sound.
+                //playSoundBackground();
             }
-        } else {
-            mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                Uri thisfile = file;
+        });
 
-                @Override
-                public void onCompletion(MediaPlayer mp) {
-                    if (thisfile != null) {
-                        mp.reset();
+        AssetManager assetManager = this.getAssets();
+        String[] files;
+        try {
+            files = assetManager.list(directory);
+            if (files == null)
+                throw new NullPointerException();
+            for (String file : files) {
+                if (file.contains("mp3")) {
+                    String text = file.substring(0, file.indexOf('.'));
+                    if (!soundHash.containsKey(text)) {
                         try {
-                            mp.setDataSource(getApplicationContext(), file);
-                            mp.prepare();
+                            int id = this.soundPool.load(assetManager.openFd(directory + "/" + file), 1);
+                            soundHash.put(text, id);
                         } catch (Exception e) {
-
+                            Log.e(getClass().getSimpleName(), e.toString());
                         }
-                        thisfile = null;
-                        mp.start();
-                        /*FlowLayout buttonLayout = findViewById(R.id.Button_layout);
-                        for(int i=0;i<buttonLayout.getChildCount();i++){
-                            buttonLayout.getChildAt(i).setBackground(getApplicationContext().getResources().getDrawable(R.drawable.egg));
-                        }*/
-
-
-
                     }
                 }
-            });
+            }
+        } catch (Exception ex) {
+            Log.e("exception", ex.toString());
+            System.exit(1);
+
         }
+
+
+        soundHash.put("failbuzzer", this.soundPool.load(this, R.raw.failbuzzer, 4));
+        soundHash.put("nicework", this.soundPool.load(this, R.raw.nicework, 4));
+
 
     }
 
@@ -102,147 +110,191 @@ public class MainActivity extends AppCompatActivity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putSerializable("shoeBox", shoeBox);
-     }
+        outState.putString("DIRECTORY", directory);
+        outState.putSerializable("shoeBox", shoeBox);
+        outState.putInt("DIFFICULTY", difficulty);
+
+        soundPool.release();
+        //soundPool =null;
+        //soundPoolLoaded=false;
+    }
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        difficulty = getIntent().getIntExtra("DIFFICULTY", 2);
+        if (getIntent().getStringExtra("DIRECTORY") != null)
+            directory = getIntent().getStringExtra("DIRECTORY");
+
         if (savedInstanceState != null) {
+            Log.i("test", "savedInstanceNotNull");
             if (savedInstanceState.containsKey("shoeBox"))
-                shoeBox= (ShoeBox)savedInstanceState.get("shoeBox");
+                shoeBox = (ShoeBox) savedInstanceState.get("shoeBox");
+            if (savedInstanceState.containsKey("DIRECTORY"))
+                directory = savedInstanceState.getString("DIRECTORY");
+            if (savedInstanceState.containsKey("DIFFICULTY"))
+                difficulty = savedInstanceState.getInt("DIFFICULTY");
 
         }
+        Log.i("INstance", "Instance  null");
+        AssetManager assetManager = this.getAssets();
 
-       if (savedInstanceState == null) {
-           Log.i("INstance", "Instance  null");
-           for (int i = 0; i < 26; i++) {
-               String let = Character.toString((char) (97 + i));
-               String filename = "android.resource://" + this.getPackageName() + "/raw/" + let;
-               Uri myUri = Uri.parse(filename);
-               Item item = new Item();
-               item.setAudioFile(myUri);
-               item.setText(let);
-               shoeBox.addCard(item);
-           }
-       }
-        shoeBox.numInActiveList =5;
-        int difficulty=getIntent().getIntExtra("DIFFICULTY",0);
-        shoeBox.numInActiveList =difficulty;
+        if (savedInstanceState == null) {
+            try {
+                String[] files = assetManager.list(directory);
+                if (files == null)
+                    throw new NullPointerException();
+                for (String file : files) {
+                    String text = file.substring(0, file.indexOf('.'));
+                    Log.i("files", text);
+                    Item item = new Item(text);
+                    item.setAudioFile(text);
+                    shoeBox.addACard(item);
 
-        FlowLayout buttonLayout = findViewById(R.id.Button_layout);
+                }
 
-           for(int i=0;i<shoeBox.numInActiveList;i++){
-                Button button = new Button(this);
-                button.setId(View.generateViewId());
-                button.setBackground(getApplicationContext().getResources().getDrawable(R.drawable.egg));
-                button.setTextSize(30f);
-                button.setTextColor(getResources().getColor(R.color.colorAccent));
-                button.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View v) {
-                       final Button b = (Button) v;
-                        Log.i("IDS",String.valueOf(b.getId()) +" "+ String.valueOf(shoeBox.getCurrentItem().getId()) );
-                        if (b.getId() == shoeBox.getCurrentItem().getId()) {
-                            shoeBox.getCurrentItem().setCorrect(shoeBox.getCurrentItem().getCorrect() + 1);
-                            Uri uri = Uri.parse("android.resource://" + getPackageName() + "/raw/nicework");
-                            b.setBackground(getApplicationContext().getResources().getDrawable(R.drawable.egghatch));
-                            new Handler().postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    b.setBackground(getApplicationContext().getResources().getDrawable(R.drawable.egg));
-
-                                }
-                            }, 600);
-                            playSound(uri);
-
-                            loadButtons();
-                        } else {
-                            Uri uri = Uri.parse("android.resource://" + getPackageName() + "/raw/failbuzzer");
-                            b.startAnimation(AnimationUtils.loadAnimation(b.getContext(),R.anim.rotate));
-                            playSound(uri);
-                            shoeBox.getCurrentItem().setCorrect(0);
-                        }
-
-                    }
-
-                });
-                buttonLayout.addView(button);
+            } catch (Exception e) {
+                Log.e("Error:", e.toString());
+                System.exit(1);
             }
 
 
+        }
+        initSoundPool();
+
+        shoeBox.setNumInActiveList(difficulty);
+
+        buttonLayout = new FlowLayout(this);
+        buttonLayout.setGravity(Gravity.CENTER_HORIZONTAL);
+        // buttonLayout.setGravity(Gravity.BOTTOM);
+        LinearLayout linearLayout = findViewById(R.id.LinearLayout);
+        //buttonLayout.setMinimumWidth(constraintLayout.getWidth());
+        // linearLayout.setGravity(Gravity.CENTER_HORIZONTAL);
+        linearLayout.addView(buttonLayout);
+        Log.i("test", "1");
+        for (int i = 0; i < shoeBox.getNumInActiveList(); i++) {
+            Log.i("test", "2");
+            Button button = new Button(this);
+            button.setId(View.generateViewId());
+            button.setBackground(getApplicationContext().getResources().getDrawable(R.drawable.egg));
+            button.setTextSize(30f);
+            button.setTextColor(getResources().getColor(R.color.colorAccent));
+
+            button.setOnClickListener(new View.OnClickListener() {
+
+                public void onClick(View v) {
+                    final Button b = (Button) v;
+                    Log.i("IDS", String.valueOf(b.getId()) + " " + String.valueOf(shoeBox.getCurrentItem().getId()));
+                    if (b.getId() == shoeBox.getCurrentItem().getId()) {
+                        shoeBox.getCurrentItem().setCorrect(shoeBox.getCurrentItem().getCorrect() + 1);
+                        Uri uri = Uri.parse("android.resource://" + getPackageName() + "/raw/nicework");
+                        b.startAnimation(AnimationUtils.loadAnimation(b.getContext(), R.anim.move));
+
+                        playSound("nicework", 0, 1f);
+
+                        loadButtons();
+                    } else {
+                        b.startAnimation(AnimationUtils.loadAnimation(b.getContext(), R.anim.rotate));
+                        playSound("failbuzzer", 0f, 1f);
+                        shoeBox.getCurrentItem().setCorrect(0);
+                    }
+
+                }
+
+            });
+            Log.i("test", "3");
+            buttonLayout.addView(button);
+        }
+
+        Context context = getApplicationContext();
+        CharSequence text = "Touch anywhere! But not an Egg";
+
+        int duration = Toast.LENGTH_LONG;
+        Toast toast = Toast.makeText(context, text, duration);
+        toast.setGravity(Gravity.TOP | Gravity.LEFT, 10, 10);
+        toast.show();
         loadButtons();
+    }
+
+    public void playSound(final String text, final float volumnL, final float volumnR) {
+        //nice work needs to be played before playing next sound
+
+        Log.i("playsound1", text);
+
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                long now = System.currentTimeMillis();
+                Log.i("playsound2", text);
+
+                while (now - last_time < 500) {
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ex) {
+                        Log.e("PlaySound Error:", ex.toString());
+                    }
+                    now = System.currentTimeMillis();
+                }
+                Log.i("playsound3", text);
+
+                if (soundPoolLoaded) {
+                    Log.i("playsound", text);
+                    soundPool.play(soundHash.get(text), volumnL, volumnR, 1, 0, 1f);
+                }
+                last_time = now;
+
+
+            }
+        };
+        runnable.run();
     }
 
 
     public void loadButtons() {
         final Random rnd = new Random(System.currentTimeMillis());
         int j = 0;
-        FlowLayout buttonLayout = findViewById(R.id.Button_layout);
         shoeBox.getActiveList();
         shoeBox.getRandActiveList();
-
-        for (int i = 0; i < shoeBox.getActiveList().size(); i++) {
-            Log.i("items",String.valueOf(i));
-            Button button = (Button)buttonLayout.getChildAt(i);
-            shoeBox.getActiveList().get(i).setId(button.getId());
-            button.setText(shoeBox.getActiveList().get(i).getText());
-           // button.setAnimation(AnimationUtils.loadAnimation(this,R.anim.move));
-        }
-        shoeBox.setCurrentItem( shoeBox.getChoice());
-        if (shoeBox.getCurrentItem() == null) {
+        if (shoeBox.masteredTheList()) {
             //  if(null ==null){
             Intent newIntent = new Intent(this, YouWon.class);
             startActivity(newIntent);
-            System.exit(0);
+            finish();
 
         }
+        for (int i = 0; i < shoeBox.getActiveList().size(); i++) {
+            Log.i("items", String.valueOf(i));
+            Button button = (Button) buttonLayout.getChildAt(i);
+            button.setAllCaps(false);
+            shoeBox.getActiveList().get(i).setId(button.getId());
+            button.setText(shoeBox.getActiveList().get(i).getText());
+            //button.setAnimation(AnimationUtils.loadAnimation(this,R.anim.slide_up));
+            // button.setAnimation(AnimationUtils.loadAnimation(this,R.anim.move));
+        }
+        shoeBox.setCurrentItem(shoeBox.getChoice());
 
-        // shoeBox.setCurrentItem( shoeBox.getChoice();
-        playSound(shoeBox.getCurrentItem().getAudioFile());
-        /*Random rnd = new Random(System.currentTimeMillis());
-        int btoChoose =  rnd.nextInt(buttonlist.size());
-        for(int i=0;i<buttonlist.size();i++){
-            TextView button = buttonlist.get(i);
-            int rnum=0;
-            String let="a";
-            boolean haveit;
-            boolean good=false;
-            for(Integer val:timesRight){
-                if(val.intValue() <2) {
-                    break;
-                }
-            }
-            if(!good){
-                Toast.makeText(this, "Congratulations!!", Toast.LENGTH_SHORT).show();
-            }
-            do {
-                haveit=false;
-                do {
-                    rnum = rnd.nextInt(26);
-                }
-                while(timesRight.get(rnum).intValue() >=2);
-                let = Character.toString((char)(97+rnum));
-                for(int j=0;j<i;j++){
-                    TextView check = buttonlist.get(j);
-                    String blet=check.getText().toString();
-                    if(blet.compareTo(let)==0) {
-                        haveit = true;
-                        break;
-                    }
+        playSound(shoeBox.getCurrentItem().getAudioFileString(), 1f, 1f);
+    }
 
-                }
-            }while(haveit);
-            button.setText(let);
-            if(btoChoose == i) {
-                letter = let;
-            }
-            button.setText(let);
-        }*/
-        //playSound(letter);
+    @Override
+    protected void onPostCreate(@Nullable Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
     }
 
     public void playSound(View view) {
-        playSound(shoeBox.getCurrentItem().getAudioFile());
+        playSound(shoeBox.getCurrentItem().getAudioFileString(), 1f, 0f);
+    }
+
+    public void playSoundToPick(View view) {
+        Context context = getApplicationContext();
+        CharSequence textToast = "Touch the egg that matches the sound";
+
+        int duration = Toast.LENGTH_SHORT;
+        Toast toast = Toast.makeText(context, textToast, duration);
+        toast.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL, 10, 10);
+        toast.show();
+        playSound(shoeBox.getCurrentItem().getAudioFileString(), 1f, 1f);
     }
 }

@@ -49,7 +49,7 @@ class GameThread extends Thread {
 
             try {
                 // Sleep.
-                this.sleep(waitTime);
+                sleep(waitTime);
             } catch(InterruptedException e)  {
 
             }

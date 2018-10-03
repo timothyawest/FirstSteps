@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.util.Log;
 
+import com.example.shoebox.Item;
+
 public class LetterBox extends GameObject {
         private SpriteList spriteList;
         private final Bitmap letterBox;

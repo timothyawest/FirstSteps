@@ -1,4 +1,4 @@
-package com.example.timothy.shootthemdown;
+package com.example.shoebox;
 
 import android.util.Log;
 
@@ -18,7 +18,7 @@ public class ShoeBox implements Serializable {
     List<Item> toDoList = new ArrayList<>();
     List<Item> doneList = new ArrayList<>();
 
-    ShoeBox() {
+    public ShoeBox() {
 
     }
 

@@ -5,6 +5,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.util.Log;
 
+import com.example.shoebox.Item;
+
 public class Missile extends GameObject {
     private int id = getNextId();
     private final Bitmap[] missiles;
